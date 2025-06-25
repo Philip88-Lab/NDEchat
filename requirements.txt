@@ -1,0 +1,10 @@
+streamlit
+google-generativeai
+faiss-cpu
+langchain-community
+langchain-core
+langchain-google-genai
+langchain-huggingface
+sentence-transformers
+numpy
+# python-dotenv  # 在Streamlit Cloud上不需要，因为有专门的Secrets管理
