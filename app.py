@@ -196,4 +196,3 @@ print("FAISS index (nde_faiss.index) and document mapping (nde_doc_mapping.pkl) 
 # 在 Colab 中，直接运行可能需要一些技巧才能访问 URL。
 # ngrok 是一个好方法，或者使用 Colab 的端口转发功能（如果可用）。
 # 这里我们用标准的 Streamlit run 命令，Colab 可能会提供一个临时的 URL。
-!streamlit run app.py --server.enableCORS=true --server.enableXsrfProtection=false --server.headless=true
