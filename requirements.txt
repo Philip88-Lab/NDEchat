@@ -1,10 +1,9 @@
-streamlit
-google-generativeai
-faiss-cpu
-langchain-community
-langchain-core
+streamlit>=1.35.0
+faiss-cpu>=1.7.4
+langchain==0.2.1
 langchain-google-genai
-langchain-huggingface
+langchain-community
 sentence-transformers
+huggingface-hub
+google-auth
 numpy
-# python-dotenv  # 在Streamlit Cloud上不需要，因为有专门的Secrets管理
