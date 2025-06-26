@@ -7,7 +7,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-
+from langchain_core.documents import Document
 import torch
 
 # ---- SIDEBAR ----
@@ -23,7 +23,9 @@ st.write("Ask any question about NDEs! The chatbot retrieves real case evidence 
 def load_index_and_mapping():
     index = faiss.read_index("nde_faiss.index")
     with open("nde_doc_mapping.pkl", "rb") as f:
-        doc_map = pickle.load(f)
+        doc_map_raw = pickle.load(f)
+    # Convert raw dict to Document objects for compatibility
+    doc_map = {i: Document(page_content=d["page_content"], metadata=d["metadata"]) for i, d in doc_map_raw.items()}
     return index, doc_map
 
 index, document_id_to_original_doc = load_index_and_mapping()
