@@ -19,8 +19,7 @@ st.title("NDE (濒死体验) 查询机器人")
 # --- 加载预计算的资源 (FAISS 索引, 文档映射) 和模型 ---
 @st.cache_resource # Streamlit 缓存装饰器，避免重复加载
 def load_resources():
-    print(">>> LOAD_RESOURCES: Attempting to load resources via print.") # 标准输出日志
-    st.write("DEBUG_UI: Attempting to load resources...") # UI输出, 可选
+    print(">>> LOAD_RESOURCES: Attempting to load resources...")
 
     loaded_index = None
     loaded_doc_mapping = None
@@ -31,30 +30,28 @@ def load_resources():
     faiss_index_path = "nde_faiss.index"
     if not os.path.exists(faiss_index_path):
         print(f">>> LOAD_RESOURCES: FAISS index file NOT FOUND at {faiss_index_path}")
-        st.error(f"FAISS index file not found at {faiss_index_path}. Please ensure it's available.")
+        st.error(f"FAISS index file not found at {faiss_index_path}. Please ensure it's available.") # UI Error is OK here
     else:
         try:
             loaded_index = faiss.read_index(faiss_index_path)
             print(f">>> LOAD_RESOURCES: FAISS index loaded successfully. Vectors: {loaded_index.ntotal if loaded_index else 'None'}")
-            st.write(f"DEBUG_UI: FAISS index loaded. Vectors: {loaded_index.ntotal if loaded_index else 'None'}")
         except Exception as e_faiss:
             print(f">>> LOAD_RESOURCES: ERROR loading FAISS index: {str(e_faiss)}\n{traceback.format_exc()}")
-            st.error(f"Error loading FAISS index: {e_faiss}")
+            st.error(f"Error loading FAISS index: {e_faiss}") # UI Error is OK here
 
     # 2. 加载文档映射
     doc_mapping_path = "nde_doc_mapping.pkl"
     if not os.path.exists(doc_mapping_path):
         print(f">>> LOAD_RESOURCES: Document mapping file NOT FOUND at {doc_mapping_path}")
-        st.error(f"Document mapping file not found at {doc_mapping_path}. Please ensure it's available.")
+        st.error(f"Document mapping file not found at {doc_mapping_path}. Please ensure it's available.") # UI Error is OK here
     else:
         try:
             with open(doc_mapping_path, 'rb') as f:
                 loaded_doc_mapping = pickle.load(f)
             print(f">>> LOAD_RESOURCES: Document mapping loaded successfully. Entries: {len(loaded_doc_mapping) if loaded_doc_mapping else 'None'}")
-            st.write(f"DEBUG_UI: Document mapping loaded. Entries: {len(loaded_doc_mapping) if loaded_doc_mapping else 'None'}")
         except Exception as e_map:
             print(f">>> LOAD_RESOURCES: ERROR loading document mapping: {str(e_map)}\n{traceback.format_exc()}")
-            st.error(f"Error loading document mapping: {e_map}")
+            st.error(f"Error loading document mapping: {e_map}") # UI Error is OK here
 
     # 3. 初始化嵌入模型 (HuggingFace)
     try:
@@ -62,21 +59,18 @@ def load_resources():
             model_name="sentence-transformers/all-MiniLM-L6-v2",
             model_kwargs={'device': 'cpu'}
         )
-        print(">>> LOAD_RESOURCES: HuggingFace embedding model INITIALIZED successfully via print.")
-        st.write("DEBUG_UI: HuggingFace embedding model initialized.")
+        print(">>> LOAD_RESOURCES: HuggingFace embedding model INITIALIZED successfully.")
     except Exception as e_hf:
         print(f">>> LOAD_RESOURCES: ERROR initializing HuggingFace embedding model: {str(e_hf)}\n{traceback.format_exc()}")
-        st.error(f"Error initializing HuggingFace embedding model: {e_hf}")
-        hf_embedding_model = None #确保失败时为None
+        st.error(f"Error initializing HuggingFace embedding model: {e_hf}") # UI Error is OK here
+        hf_embedding_model = None
 
     # 4. 初始化 LLM (Gemini)
     try:
         gemini_api_key_st = os.environ.get('GOOGLE_API_KEY')
-        print(f">>> LOAD_RESOURCES: GOOGLE_API_KEY from env: '{'SET' if gemini_api_key_st else 'NOT_SET'}'") # 不打印实际key
-        st.write(f"DEBUG_UI: GOOGLE_API_KEY from env: {'SET' if gemini_api_key_st else 'NOT_SET'}")
-
+        print(f">>> LOAD_RESOURCES: GOOGLE_API_KEY from env: '{'SET' if gemini_api_key_st else 'NOT_SET'}'")
         if not gemini_api_key_st:
-            st.warning("GOOGLE_API_KEY not found in environment secrets. LLM will likely fail if a key is required.")
+            st.warning("GOOGLE_API_KEY not found in environment secrets. LLM will likely fail if a key is required.") # UI Warning is OK
             llm_model = None
         else:
             llm_model = ChatGoogleGenerativeAI(
@@ -84,29 +78,29 @@ def load_resources():
                 google_api_key=gemini_api_key_st,
                 temperature=0.7
             )
-            print(">>> LOAD_RESOURCES: Gemini LLM INITIALIZED successfully via print.")
-            st.write("DEBUG_UI: Gemini LLM initialized.")
+            print(">>> LOAD_RESOURCES: Gemini LLM INITIALIZED successfully.")
     except Exception as e_llm:
         print(f">>> LOAD_RESOURCES: ERROR initializing Gemini LLM: {str(e_llm)}\n{traceback.format_exc()}")
-        st.error(f"Error initializing Gemini LLM: {e_llm}")
-        llm_model = None #确保失败时为None
+        st.error(f"Error initializing Gemini LLM: {e_llm}") # UI Error is OK here
+        llm_model = None
 
     print(">>> LOAD_RESOURCES: Finished loading resources.")
-    st.write("DEBUG_UI: Finished loading resources.")
     return loaded_index, loaded_doc_mapping, hf_embedding_model, llm_model
 
 # 加载资源
-# 使用 try-except 包装 load_resources 的调用，以防 @st.cache_resource 内部或函数本身抛出未捕获的异常
 try:
     index_st, doc_mapping_st, embedding_model_st, llm_st = load_resources()
-except Exception as e_load_res:
-    st.error(f"CRITICAL ERROR during load_resources call: {e_load_res}")
+except Exception as e_load_res_call: # Catch error from load_resources call itself or @st.cache_resource
+    st.error(f"CRITICAL ERROR during the call to load_resources: {e_load_res_call}")
     st.text(traceback.format_exc())
+    # Ensure these are None so RAG chain building will show missing components
     index_st, doc_mapping_st, embedding_model_st, llm_st = None, None, None, None
 
 
 # --- RAG 管道组件 ---
 def format_docs_for_context_st(docs: list[Document]) -> str:
+    # This function is called by LangChain, should not have st.* calls if run in background thread
+    print(f">>> FORMAT_DOCS: Formatting {len(docs)} documents for context.")
     formatted_strings = []
     for i, doc_obj in enumerate(docs):
         source_id = doc_obj.metadata.get('id', f'Unknown Source ID {i}')
@@ -116,71 +110,59 @@ def format_docs_for_context_st(docs: list[Document]) -> str:
 
 def retrieve_relevant_documents_st(query: str, k_results: int = 3) -> list[Document]:
     print(f">>> RETRIEVE_FUNC: CALLED with query: '{query}' at {time.time()}")
-    st.write(f"--- retrieve_relevant_documents_st CALLED with query: '{query}' ---")
 
     if index_st is None:
-        st.error("DEBUG_RETRIEVE: FAISS index (index_st) is None!")
-        print(">>> RETRIEVE_FUNC: index_st is None, returning empty list.")
+        print(">>> RETRIEVE_FUNC: ERROR - FAISS index (index_st) is None!")
         return []
-    if not doc_mapping_st: # Checks for None or empty
-        st.error("DEBUG_RETRIEVE: Document mapping (doc_mapping_st) is empty or None!")
-        print(">>> RETRIEVE_FUNC: doc_mapping_st is empty or None, returning empty list.")
+    if not doc_mapping_st:
+        print(">>> RETRIEVE_FUNC: ERROR - Document mapping (doc_mapping_st) is empty or None!")
         return []
     if embedding_model_st is None:
-        st.error("DEBUG_RETRIEVE: Embedding model (embedding_model_st) is None!")
-        print(">>> RETRIEVE_FUNC: embedding_model_st is None, returning empty list.")
+        print(">>> RETRIEVE_FUNC: ERROR - Embedding model (embedding_model_st) is None!")
         return []
 
     retrieved_docs_actual = []
     try:
         print(f">>> RETRIEVE_FUNC: Embedding model type: {type(embedding_model_st)}")
-        st.write(f"DEBUG_RETRIEVE: Embedding model type: {type(embedding_model_st)}")
-
         query_embedding = None
         try:
             print(f">>> RETRIEVE_FUNC: Attempting to embed query: '{query}' at {time.time()}")
-            st.write(f"DEBUG_RETRIEVE: Attempting to embed query: '{query}'")
             query_embedding = embedding_model_st.embed_query(query)
-            print(f">>> RETRIEVE_FUNC: Query embedded successfully at {time.time()}. Embedding type: {type(query_embedding)}")
-            st.write(f"DEBUG_RETRIEVE: Query embedded successfully. Len: {len(query_embedding) if hasattr(query_embedding, '__len__') else 'N/A'}")
+            print(f">>> RETRIEVE_FUNC: Query embedded successfully at {time.time()}. Embedding type: {type(query_embedding)}, Len: {len(query_embedding) if hasattr(query_embedding, '__len__') else 'N/A'}")
         except Exception as e_embed:
             print(f">>> RETRIEVE_FUNC: ERROR during query embedding: {str(e_embed)}\n{traceback.format_exc()}")
-            st.error(f"DEBUG_RETRIEVE: ERROR during query embedding: {str(e_embed)}")
-            st.text(traceback.format_exc())
             return []
 
         if query_embedding is None:
-            st.error("DEBUG_RETRIEVE: Query embedding resulted in None. Cannot proceed.")
-            print(">>> RETRIEVE_FUNC: Query embedding is None.")
+            print(">>> RETRIEVE_FUNC: ERROR - Query embedding resulted in None.")
             return []
 
         query_embedding_np = np.array([query_embedding]).astype('float32')
-        st.write(f"DEBUG_RETRIEVE: Query embedding NumPy shape: {query_embedding_np.shape}")
+        print(f">>> RETRIEVE_FUNC: Query embedding NumPy shape: {query_embedding_np.shape}")
 
         distances, indices = None, None
         try:
-            print(f">>> RETRIEVE_FUNC: Attempting FAISS search. Index ntotal: {index_st.ntotal}, k: {k_results}")
-            st.write(f"DEBUG_RETRIEVE: Attempting FAISS search. Index ntotal: {index_st.ntotal}, k: {k_results}")
-            distances, indices = index_st.search(query_embedding_np, k_results)
-            print(f">>> RETRIEVE_FUNC: FAISS search completed. Indices: {indices}, Distances: {distances}")
-            st.write(f"DEBUG_RETRIEVE: FAISS search completed. Indices: {indices}, Distances: {distances}")
+            print(f">>> RETRIEVE_FUNC: Attempting FAISS search. Index ntotal: {index_st.ntotal if index_st else 'None'}, k: {k_results}")
+            if index_st:
+                 distances, indices = index_st.search(query_embedding_np, k_results)
+                 print(f">>> RETRIEVE_FUNC: FAISS search completed. Indices: {indices}, Distances: {distances}")
+            else:
+                 print(">>> RETRIEVE_FUNC: CRITICAL - index_st became None before search!")
+                 return [] # Should not happen if initial checks passed
         except Exception as e_search:
             print(f">>> RETRIEVE_FUNC: ERROR during FAISS search: {str(e_search)}\n{traceback.format_exc()}")
-            st.error(f"DEBUG_RETRIEVE: ERROR during FAISS search: {str(e_search)}")
-            st.text(traceback.format_exc())
             return []
 
         if indices is None or indices.size == 0:
-            st.warning("DEBUG_RETRIEVE: FAISS search returned no indices.")
             print(">>> RETRIEVE_FUNC: FAISS search returned no indices.")
             return []
             
-        retrieved_docs_details = []
-        for i, faiss_idx_np in enumerate(indices[0]): # faiss_idx from numpy array
-            faiss_idx = int(faiss_idx_np) # Convert numpy int to python int
+        retrieved_docs_details_for_log = []
+        for i, faiss_idx_np in enumerate(indices[0]):
+            faiss_idx = int(faiss_idx_np)
             detail = {"faiss_original_index": faiss_idx}
             current_distance = float('inf')
-            if distances is not None and i < distances.shape[1]:
+            if distances is not None and i < distances.shape[1]: # distances[0]
                  current_distance = float(distances[0][i])
             detail["distance_score"] = current_distance
 
@@ -189,25 +171,20 @@ def retrieve_relevant_documents_st(query: str, k_results: int = 3) -> list[Docum
                 if doc_object:
                     retrieved_docs_actual.append(doc_object)
                     detail["doc_id"] = doc_object.metadata.get('id')
-                    detail["content_snippet"] = doc_object.page_content[:150] + "..."
+                    # detail["content_snippet"] = doc_object.page_content[:70] + "..." # Keep log smaller
                 else:
                     detail["error"] = f"FAISS Index {faiss_idx} not found in doc_mapping_st."
             else:
-                detail["info"] = "FAISS returned -1 (no more similar documents for this rank)"
-            retrieved_docs_details.append(detail)
+                detail["info"] = "FAISS returned -1"
+            retrieved_docs_details_for_log.append(detail)
         
-        st.write("DEBUG_RETRIEVE: Retrieved documents details:")
-        st.json(retrieved_docs_details if retrieved_docs_details else "No details to show.")
-        print(f">>> RETRIEVE_FUNC: Processed retrieved_docs_details: {retrieved_docs_details}")
+        print(f">>> RETRIEVE_FUNC: Retrieved documents details (for log): {retrieved_docs_details_for_log}")
 
     except Exception as e_main_retrieve:
         print(f">>> RETRIEVE_FUNC: UNEXPECTED ERROR in main try-block: {str(e_main_retrieve)}\n{traceback.format_exc()}")
-        st.error(f"DEBUG_RETRIEVE: UNEXPECTED ERROR in main try-block: {str(e_main_retrieve)}")
-        st.text(traceback.format_exc())
-        return [] # Important to return empty list on error
+        return []
 
     print(f">>> RETRIEVE_FUNC: RETURNING {len(retrieved_docs_actual)} documents at {time.time()}")
-    st.write(f"--- retrieve_relevant_documents_st RETURNING {len(retrieved_docs_actual)} documents ---")
     return retrieved_docs_actual
 
 prompt_template_st_str = """
@@ -244,10 +221,10 @@ if llm_st and index_st and doc_mapping_st and embedding_model_st and prompt_temp
             | StrOutputParser()
         )
         print(">>> APP_SETUP: RAG chain built successfully.")
-        st.success("聊天机器人已准备就绪！")
+        st.success("聊天机器人已准备就绪！") # UI update
     except Exception as e_rag_build:
         print(f">>> APP_SETUP: ERROR building RAG chain: {str(e_rag_build)}\n{traceback.format_exc()}")
-        st.error(f"Error building RAG chain: {e_rag_build}")
+        st.error(f"Error building RAG chain: {e_rag_build}") # UI update
         rag_chain_st = None
 else:
     missing_components = []
@@ -255,9 +232,8 @@ else:
     if not index_st: missing_components.append("FAISS index")
     if not doc_mapping_st: missing_components.append("Document mapping")
     if not embedding_model_st: missing_components.append("Embedding model")
-    # prompt_template_st is unlikely to be None if defined above
     print(f">>> APP_SETUP: RAG chain NOT built. Missing components: {', '.join(missing_components)}")
-    st.error(f"聊天机器人未能成功初始化。缺少以下组件: {', '.join(missing_components)}. 请检查资源加载错误和API密钥。")
+    st.error(f"聊天机器人未能成功初始化。缺少以下组件: {', '.join(missing_components)}. 请检查资源加载错误和API密钥。") # UI update
 
 # --- Streamlit 聊天界面 ---
 if "messages" not in st.session_state:
@@ -274,22 +250,21 @@ if user_query := st.chat_input("请输入您关于 NDE 的问题..."):
 
     with st.chat_message("assistant"):
         if rag_chain_st:
-            print(f">>> UI: Attempting to invoke rag_chain_st with query: '{user_query}' at {time.time()}")
-            st.write(f"DEBUG_UI: Attempting to invoke RAG chain with query: '{user_query}'")
+            print(f">>> UI_CHAT: Attempting to invoke rag_chain_st with query: '{user_query}' at {time.time()}")
+            # No st.write here for debugging invoke, rely on print and final UI update
             try:
                 response = rag_chain_st.invoke({"question": user_query})
-                print(f">>> UI: rag_chain_st.invoke successful. Response (type: {type(response)}): '{str(response)[:100]}...' at {time.time()}")
-                st.write(f"DEBUG_UI: RAG chain invoke successful.")
+                print(f">>> UI_CHAT: rag_chain_st.invoke successful. Response (type: {type(response)}): '{str(response)[:100]}...' at {time.time()}")
                 st.markdown(response)
                 st.session_state.messages.append({"role": "assistant", "content": response})
             except Exception as e_invoke:
-                print(f">>> UI: ERROR during rag_chain_st.invoke: {str(e_invoke)}\n{traceback.format_exc()}")
+                print(f">>> UI_CHAT: ERROR during rag_chain_st.invoke: {str(e_invoke)}\n{traceback.format_exc()}")
                 error_message = f"处理您的问题时发生错误 (RAG chain invocation): {e_invoke}"
-                st.error(error_message)
-                st.text(traceback.format_exc())
-                st.session_state.messages.append({"role": "assistant", "content": "抱歉，我无法回答您的问题（RAG链调用时出错）。"})
+                st.error(error_message) # This should display the error from invoke
+                # st.text(traceback.format_exc()) # Optionally show traceback in UI too
+                st.session_state.messages.append({"role": "assistant", "content": f"抱歉，处理查询时出错: {e_invoke}"})
         else:
-            print(f">>> UI: rag_chain_st is None. Cannot process query '{user_query}'. at {time.time()}")
+            print(f">>> UI_CHAT: rag_chain_st is None. Cannot process query '{user_query}'. at {time.time()}")
             st.warning("聊天机器人未激活（RAG链为None），无法处理查询。请检查应用启动时的错误信息。")
 
 st.sidebar.info("这是一个基于检索增强生成 (RAG) 的 NDE 聊天机器人原型。")
