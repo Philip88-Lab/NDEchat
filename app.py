@@ -1,3 +1,4 @@
+import time
 import streamlit as st
 import os
 import numpy as np
@@ -20,19 +21,19 @@ st.title("NDE (濒死体验) 查询机器人")
 
 # --- 加载预计算的资源 (FAISS 索引, 文档映射) 和模型 ---
 @st.cache_resource # Streamlit 缓存装饰器，避免重复加载
-def load_resources():
-    print("Loading resources for Streamlit app...")
-    # 1. 加载 FAISS 索引
-    faiss_index_path = "nde_faiss.index" # 假设与 app.py 在同一目录或指定完整路径
-    if not os.path.exists(faiss_index_path):
-        st.error(f"FAISS index file not found at {faiss_index_path}. Please ensure it's available.")
-        return None, None, None, None
-    try:
-        loaded_index = faiss.read_index(faiss_index_path)
-        print(f"FAISS index loaded successfully from {faiss_index_path} with {loaded_index.ntotal} vectors.")
-    except Exception as e:
-        st.error(f"Error loading FAISS index: {e}")
-        return None, None, None, None
+# ... 在 load_resources 函数中 ...
+# 3. 初始化嵌入模型 (HuggingFace)
+try:
+    hf_embedding_model = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        model_kwargs={'device': 'cpu'}
+    )
+    print(">>> LOAD_RESOURCES: HuggingFace embedding model INITIALIZED successfully via print.") # 标准输出
+    st.success("HuggingFace embedding model initialized for UI.") # UI输出
+except Exception as e:
+    print(f">>> LOAD_RESOURCES: ERROR initializing HuggingFace embedding model: {str(e)}") # 标准输出
+    st.error(f"Error initializing HuggingFace embedding model: {e}")
+    # ... return ...
 
     # 2. 加载文档映射
     doc_mapping_path = "nde_doc_mapping.pkl"
@@ -98,19 +99,52 @@ def format_docs_for_context_st(docs: list[Document]) -> str:
 
 import traceback # 导入 traceback 模块
 
-def retrieve_relevant_documents_st(query: str, k_results: int = 3) -> list[Document]:
-    # 确保这个函数至少被调用了
-    st.write(f"--- retrieve_relevant_documents_st CALLED with query: '{query}' ---")
+import traceback
+import time # 导入 time 模块
 
-    if index_st is None:
-        st.error("DEBUG: FAISS index (index_st) is None!")
-        return []
-    if not doc_mapping_st:
-        st.error("DEBUG: Document mapping (doc_mapping_st) is empty or None!")
-        return []
-    if embedding_model_st is None:
-        st.error("DEBUG: Embedding model (embedding_model_st) is None!")
-        return []
+def retrieve_relevant_documents_st(query: str, k_results: int = 3) -> list[Document]:
+    print(f">>> RETRIEVE_FUNC: CALLED with query: '{query}' at {time.time()}") # 标准输出日志
+    st.write(f"--- retrieve_relevant_documents_st CALLED with query: '{query}' ---") # UI输出
+
+    # ... (之前的资源检查 st.error 代码不变) ...
+    # if index_st is None: ...
+    # if not doc_mapping_st: ...
+    # if embedding_model_st is None: ...
+
+    retrieved_docs_actual = []
+    try:
+        print(f">>> RETRIEVE_FUNC: Embedding model type: {type(embedding_model_st)}") # 标准输出
+        st.write(f"DEBUG: Embedding model type: {type(embedding_model_st)}") # UI输出
+
+        query_embedding = None
+        try:
+            print(f">>> RETRIEVE_FUNC: Attempting to embed query: '{query}' at {time.time()}") # 标准输出
+            st.write(f"DEBUG: Attempting to embed query: '{query}'") # UI输出
+
+            query_embedding = embedding_model_st.embed_query(query) # <--- 这是关键调用
+
+            print(f">>> RETRIEVE_FUNC: Query embedded successfully at {time.time()}. Embedding type: {type(query_embedding)}") # 标准输出
+            st.write(f"DEBUG: Query embedded successfully. Embedding type: {type(query_embedding)}, Len (if list/array): {len(query_embedding) if hasattr(query_embedding, '__len__') else 'N/A'}") # UI输出
+        except Exception as e_embed:
+            print(f">>> RETRIEVE_FUNC: ERROR during query embedding: {str(e_embed)}") # 标准输出
+            print(traceback.format_exc()) # 标准输出 traceback
+            st.error(f"DEBUG: ERROR during query embedding: {str(e_embed)}") # UI输出
+            st.text(traceback.format_exc()) # UI输出 traceback
+            return []
+
+        # ... (后续代码，包括 FAISS search 和 st.json 输出等，暂时保持不变) ...
+        # 但要注意，如果 embed_query 之后就没有 print 日志，说明问题就在 embed_query
+
+    except Exception as e_main:
+        print(f">>> RETRIEVE_FUNC: UNEXPECTED ERROR in main try-block: {str(e_main)}") # 标准输出
+        print(traceback.format_exc()) # 标准输出 traceback
+        st.error(f"DEBUG: UNEXPECTED ERROR in retrieve_relevant_documents_st main try-block: {str(e_main)}") # UI输出
+        st.text(traceback.format_exc()) # UI输出 traceback
+        # return []
+
+    print(f">>> RETRIEVE_FUNC: RETURNING {len(retrieved_docs_actual)} documents at {time.time()}") # 标准输出
+    st.write(f"--- retrieve_relevant_documents_st RETURNING {len(retrieved_docs_actual)} documents ---") # UI输出
+    return retrieved_docs_actual
 
     retrieved_docs_actual = []
     try:
