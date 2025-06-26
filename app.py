@@ -96,56 +96,83 @@ def format_docs_for_context_st(docs: list[Document]) -> str:
         formatted_strings.append(f"Source ID: {source_id}\nContent:\n{content_snippet}")
     return "\n\n===\n\n".join(formatted_strings)
 
-def retrieve_relevant_documents_st(query: str, k_results: int = 3) -> list[Document]:
-    if index_st is None or not doc_mapping_st or embedding_model_st is None:
-        st.warning("Core resources (index, mapping, or embedding model) not loaded. Retrieval cannot proceed.")
-        return []
-    try:
-        # 打印到 Streamlit 界面，方便调试
-        st.write(f"--- Debugging Retrieval for query: '{query}' ---")
-        st.write(f"Embedding model being used: {type(embedding_model_st)}")
+import traceback # 导入 traceback 模块
 
-        query_embedding = embedding_model_st.embed_query(query)
-        # st.write(f"Query embedding (first 5 dims): {query_embedding[:5]}") # 可以取消注释查看部分嵌入向量
+def retrieve_relevant_documents_st(query: str, k_results: int = 3) -> list[Document]:
+    # 确保这个函数至少被调用了
+    st.write(f"--- retrieve_relevant_documents_st CALLED with query: '{query}' ---")
+
+    if index_st is None:
+        st.error("DEBUG: FAISS index (index_st) is None!")
+        return []
+    if not doc_mapping_st:
+        st.error("DEBUG: Document mapping (doc_mapping_st) is empty or None!")
+        return []
+    if embedding_model_st is None:
+        st.error("DEBUG: Embedding model (embedding_model_st) is None!")
+        return []
+
+    retrieved_docs_actual = []
+    try:
+        st.write(f"DEBUG: Embedding model type: {type(embedding_model_st)}")
+        query_embedding = None
+        try:
+            st.write(f"DEBUG: Attempting to embed query: '{query}'")
+            query_embedding = embedding_model_st.embed_query(query)
+            st.write(f"DEBUG: Query embedded successfully. Embedding type: {type(query_embedding)}, Len (if list/array): {len(query_embedding) if hasattr(query_embedding, '__len__') else 'N/A'}")
+        except Exception as e_embed:
+            st.error(f"DEBUG: ERROR during query embedding: {str(e_embed)}")
+            st.text(traceback.format_exc()) # 打印完整的 traceback到界面
+            return [] # 嵌入失败，无法继续
+
+        if query_embedding is None:
+            st.error("DEBUG: Query embedding resulted in None. Cannot proceed.")
+            return []
 
         query_embedding_np = np.array([query_embedding]).astype('float32')
-        
-        st.write(f"Searching FAISS index (type: {type(index_st)}, ntotal: {index_st.ntotal}) with k={k_results}")
-        distances, indices = index_st.search(query_embedding_np, k_results)
-        
-        st.write(f"FAISS search raw results - Distances: {distances}, Indices: {indices}")
+        st.write(f"DEBUG: Query embedding converted to NumPy array. Shape: {query_embedding_np.shape}")
 
+        distances, indices = None, None
+        try:
+            st.write(f"DEBUG: Attempting FAISS search. Index type: {type(index_st)}, ntotal: {index_st.ntotal}, k: {k_results}")
+            distances, indices = index_st.search(query_embedding_np, k_results)
+            st.write(f"DEBUG: FAISS search completed. Distances: {distances}, Indices: {indices}")
+        except Exception as e_search:
+            st.error(f"DEBUG: ERROR during FAISS search: {str(e_search)}")
+            st.text(traceback.format_exc()) # 打印完整的 traceback
+            return [] # 搜索失败
+
+        if indices is None or indices.size == 0:
+            st.warning("DEBUG: FAISS search returned no indices.")
+            return []
+            
         retrieved_docs_details = []
-        retrieved_docs_actual = []
-
-        if indices.size > 0: # 确保 indices 不是空的
-            for i, faiss_idx in enumerate(indices[0]):
-                detail = {"faiss_original_index": int(faiss_idx)} # Store original FAISS index
-                if faiss_idx != -1:
-                    detail["distance_score"] = float(distances[0][i])
-                    doc_object = doc_mapping_st.get(faiss_idx) # 从映射中获取
-                    if doc_object:
-                        retrieved_docs_actual.append(doc_object)
-                        detail["doc_id"] = doc_object.metadata.get('id')
-                        detail["content_snippet"] = doc_object.page_content[:150] + "..."
-                    else:
-                        detail["error"] = f"FAISS Index {faiss_idx} not found in doc_mapping_st."
-                else: # faiss_idx == -1
-                    detail["info"] = "FAISS returned -1 (no more similar documents for this rank)"
-                    # Assign a large distance if distances array might not cover this
-                    detail["distance_score"] = float(distances[0][i]) if i < distances.shape[1] else float('inf')
-
-                retrieved_docs_details.append(detail)
+        for i, faiss_idx in enumerate(indices[0]):
+            detail = {"faiss_original_index": int(faiss_idx)}
+            if faiss_idx != -1:
+                detail["distance_score"] = float(distances[0][i]) if distances is not None and i < distances.shape[1] else float('inf')
+                doc_object = doc_mapping_st.get(int(faiss_idx)) # 确保 faiss_idx 是 int
+                if doc_object:
+                    retrieved_docs_actual.append(doc_object)
+                    detail["doc_id"] = doc_object.metadata.get('id')
+                    detail["content_snippet"] = doc_object.page_content[:150] + "..."
+                else:
+                    detail["error"] = f"FAISS Index {int(faiss_idx)} not found in doc_mapping_st."
+            else:
+                detail["info"] = "FAISS returned -1"
+                detail["distance_score"] = float(distances[0][i]) if distances is not None and i < distances.shape[1] else float('inf')
+            retrieved_docs_details.append(detail)
         
-        st.write("Retrieved documents (details for debugging):")
-        st.json(retrieved_docs_details) # 用 st.json 更易读
-        st.write("--- End Debugging Retrieval ---")
+        st.write("DEBUG: Retrieved documents details:")
+        st.json(retrieved_docs_details if retrieved_docs_details else "No details to show.")
 
-        return retrieved_docs_actual
-    except Exception as e:
-        st.error(f"检索文档时出错: {e}")
-        st.exception(e) # 打印完整的异常堆栈到界面
-        return []
+    except Exception as e_main:
+        st.error(f"DEBUG: UNEXPECTED ERROR in retrieve_relevant_documents_st main try-block: {str(e_main)}")
+        st.text(traceback.format_exc()) # 打印完整的 traceback
+        # return [] # 也可以考虑在这里返回，或者让它在 RAG 链的 invoke 中被捕获
+
+    st.write(f"--- retrieve_relevant_documents_st RETURNING {len(retrieved_docs_actual)} documents ---")
+    return retrieved_docs_actual
 
 prompt_template_st_str = """
 你是一个乐于助人的助手，专门回答有关濒死体验 (NDE) 的问题。
