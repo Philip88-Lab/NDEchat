@@ -1,2 +1,2 @@
 # NDEchat
-Inquiries and chats about Near Death Experience (NDE) based on samples of 100 cases(cleaned)
+Inquirying and chatting about Near Death Experience (NDE) based on 3863 cases cleaned out of 4986 cases from NDERF.ORG 3 years ago
