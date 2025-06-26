@@ -259,6 +259,8 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
+# ... (前面的代码不变) ...
+
 if user_query := st.chat_input("请输入您关于 NDE 的问题..."):
     st.session_state.messages.append({"role": "user", "content": user_query})
     with st.chat_message("user"):
@@ -266,17 +268,23 @@ if user_query := st.chat_input("请输入您关于 NDE 的问题..."):
 
     with st.chat_message("assistant"):
         if rag_chain_st:
-            with st.spinner("正在思考并检索信息..."):
-                try:
-                    # RAG 链期望一个字典作为输入，其中包含 "question" 键
-                    response = rag_chain_st.invoke({"question": user_query})
-                    st.markdown(response)
-                    st.session_state.messages.append({"role": "assistant", "content": response})
-                except Exception as e:
-                    error_message = f"处理您的问题时发生错误: {e}"
-                    st.error(error_message)
-                    st.session_state.messages.append({"role": "assistant", "content": "抱歉，我无法回答您的问题。"})
+            print(f">>> UI: Attempting to invoke rag_chain_st with query: '{user_query}' at {time.time()}") # 标准输出
+            st.write(f"DEBUG_UI: Attempting to invoke RAG chain...") # UI输出
+            try:
+                response = rag_chain_st.invoke({"question": user_query})
+                print(f">>> UI: rag_chain_st.invoke successful. Response type: {type(response)} at {time.time()}") # 标准输出
+                st.write(f"DEBUG_UI: RAG chain invoke successful.") # UI输出
+                st.markdown(response)
+                st.session_state.messages.append({"role": "assistant", "content": response})
+            except Exception as e_invoke:
+                print(f">>> UI: ERROR during rag_chain_st.invoke: {str(e_invoke)}") # 标准输出
+                print(traceback.format_exc()) # 标准输出 traceback
+                error_message = f"处理您的问题时发生错误 (during RAG chain invocation): {e_invoke}"
+                st.error(error_message) # UI输出
+                st.text(traceback.format_exc()) # UI输出 traceback
+                st.session_state.messages.append({"role": "assistant", "content": "抱歉，我无法回答您的问题（RAG链调用失败）。"})
         else:
-            st.warning("聊天机器人未激活，无法处理查询。请检查上面的错误信息。")
+            print(f">>> UI: rag_chain_st is None. Cannot process query. at {time.time()}") # 标准输出
+            st.warning("聊天机器人未激活，无法处理查询。请检查上面的错误信息。") # UI输出
 
 st.sidebar.info("这是一个基于检索增强生成 (RAG) 的 NDE 聊天机器人原型。")
