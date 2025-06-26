@@ -99,24 +99,52 @@ def format_docs_for_context_st(docs: list[Document]) -> str:
 def retrieve_relevant_documents_st(query: str, k_results: int = 3) -> list[Document]:
     if index_st is None or not doc_mapping_st or embedding_model_st is None:
         st.warning("Core resources (index, mapping, or embedding model) not loaded. Retrieval cannot proceed.")
-        return [] # 如果资源未加载，返回空
+        return []
     try:
+        # 打印到 Streamlit 界面，方便调试
+        st.write(f"--- Debugging Retrieval for query: '{query}' ---")
+        st.write(f"Embedding model being used: {type(embedding_model_st)}")
+
         query_embedding = embedding_model_st.embed_query(query)
+        # st.write(f"Query embedding (first 5 dims): {query_embedding[:5]}") # 可以取消注释查看部分嵌入向量
+
         query_embedding_np = np.array([query_embedding]).astype('float32')
+        
+        st.write(f"Searching FAISS index (type: {type(index_st)}, ntotal: {index_st.ntotal}) with k={k_results}")
         distances, indices = index_st.search(query_embedding_np, k_results)
-        retrieved_docs = []
-        for i, faiss_idx in enumerate(indices[0]):
-            if faiss_idx != -1: # FAISS 返回 -1 表示没有更多近邻
-                doc_object = doc_mapping_st.get(faiss_idx) # 从映射中获取
-                if doc_object:
-                    retrieved_docs.append(doc_object)
-                else:
-                    print(f"Warning: FAISS index {faiss_idx} not found in doc_mapping_st.")
-            # else: # faiss_idx == -1, 意味着没有找到足够的k_results个结果
-            #     print(f"Warning: FAISS search returned -1 for index {i} with k_results={k_results}. Less than k_results documents found.")
-        return retrieved_docs
+        
+        st.write(f"FAISS search raw results - Distances: {distances}, Indices: {indices}")
+
+        retrieved_docs_details = []
+        retrieved_docs_actual = []
+
+        if indices.size > 0: # 确保 indices 不是空的
+            for i, faiss_idx in enumerate(indices[0]):
+                detail = {"faiss_original_index": int(faiss_idx)} # Store original FAISS index
+                if faiss_idx != -1:
+                    detail["distance_score"] = float(distances[0][i])
+                    doc_object = doc_mapping_st.get(faiss_idx) # 从映射中获取
+                    if doc_object:
+                        retrieved_docs_actual.append(doc_object)
+                        detail["doc_id"] = doc_object.metadata.get('id')
+                        detail["content_snippet"] = doc_object.page_content[:150] + "..."
+                    else:
+                        detail["error"] = f"FAISS Index {faiss_idx} not found in doc_mapping_st."
+                else: # faiss_idx == -1
+                    detail["info"] = "FAISS returned -1 (no more similar documents for this rank)"
+                    # Assign a large distance if distances array might not cover this
+                    detail["distance_score"] = float(distances[0][i]) if i < distances.shape[1] else float('inf')
+
+                retrieved_docs_details.append(detail)
+        
+        st.write("Retrieved documents (details for debugging):")
+        st.json(retrieved_docs_details) # 用 st.json 更易读
+        st.write("--- End Debugging Retrieval ---")
+
+        return retrieved_docs_actual
     except Exception as e:
         st.error(f"检索文档时出错: {e}")
+        st.exception(e) # 打印完整的异常堆栈到界面
         return []
 
 prompt_template_st_str = """
