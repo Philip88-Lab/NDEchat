@@ -1,5 +1,10 @@
 import streamlit as st
-import faiss, pickle, torch, re
+import os
+import zipfile
+import requests
+import faiss
+import pickle
+import torch
 import numpy as np
 from whoosh.index import open_dir
 from whoosh.qparser import QueryParser
@@ -11,34 +16,58 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.documents import Document
 from langdetect import detect
 
-# Sidebar config
+# --- Google Drive 公共直链，替换为你的zip文件ID ---
+WHOOSH_ZIP_URL = "https://drive.google.com/uc?export=download&id=163lLNm20vBzoFdOWq4VOdD3d0FFampaL"
+
+# --- 下载并解压 whoosh_indexdir.zip ---
+def download_and_extract_zip(url, target_dir="indexdir", zip_name="whoosh_indexdir.zip"):
+    if not os.path.exists(target_dir):
+        st.info(f"Downloading Whoosh index zip from cloud storage...")
+        r = requests.get(url)
+        with open(zip_name, "wb") as f:
+            f.write(r.content)
+        st.info(f"Extracting {zip_name} ...")
+        with zipfile.ZipFile(zip_name, 'r') as zip_ref:
+            zip_ref.extractall(".")
+        st.success("Whoosh index ready.")
+
+# --- 侧栏配置 ---
 st.sidebar.title("Settings")
 GEMINI_API_KEY = st.sidebar.text_input("Gemini API Key", type="password")
 TOP_K = st.sidebar.number_input("Number of results (K)", 1, 10, 5, 1)
 
-st.title("🔎 NDE Retrieval Chatbot (Hybrid Search)")
+st.title("🔎 NDE Retrieval Chatbot (Hybrid Search with Cloud Whoosh Index)")
 
-# Load indexes
+# 下载并解压索引
+download_and_extract_zip(WHOOSH_ZIP_URL)
+
+# 加载whoosh索引
 @st.cache_resource
-def load_faiss():
+def load_whoosh_index():
+    return open_dir("indexdir")
+
+whoosh_ix = load_whoosh_index()
+qp = QueryParser("content", whoosh_ix.schema)
+
+# 加载faiss索引和映射（本地需上传）
+@st.cache_resource
+def load_faiss_index():
     index = faiss.read_index("nde_faiss.index")
     with open("nde_doc_mapping.pkl", "rb") as f:
         doc_map_raw = pickle.load(f)
     doc_map = {i: Document(page_content=d["page_content"], metadata=d["metadata"]) for i, d in doc_map_raw.items()}
     return index, doc_map
 
-@st.cache_resource
-def load_whoosh():
-    return open_dir("indexdir")
+faiss_index, faiss_docs = load_faiss_index()
 
-faiss_index, faiss_docs = load_faiss()
-whoosh_ix = load_whoosh()
-qp = QueryParser("content", whoosh_ix.schema)
-
-# Load embedding model
+# 加载embedding模型
 @st.cache_resource
 def load_embedding_model():
-    return HuggingFaceEmbeddings("sentence-transformers/all-MiniLM-L6-v2", model_kwargs={'device': 'cuda' if torch.cuda.is_available() else 'cpu'})
+    return HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        model_kwargs={'device': 'cuda' if torch.cuda.is_available() else 'cpu'},
+        encode_kwargs={'normalize_embeddings': False}
+    )
 
 embedding_model = load_embedding_model()
 
@@ -52,7 +81,12 @@ def load_llm():
     if not GEMINI_API_KEY:
         st.warning("Please enter your Gemini API Key.")
         st.stop()
-    return ChatGoogleGenerativeAI("gemini-1.5-flash-latest", temperature=0.6, top_p=0.95, google_api_key=GEMINI_API_KEY)
+    return ChatGoogleGenerativeAI(
+        model="gemini-1.5-flash-latest",
+        temperature=0.6,
+        top_p=0.95,
+        google_api_key=GEMINI_API_KEY
+    )
 
 def semantic_search(query, k=5):
     query_emb = embedding_model.embed_query(query)
@@ -95,7 +129,6 @@ Answer:""" if user_lang.startswith('en') else """你是濒死体验专家，根�
     prompt = ChatPromptTemplate.from_template(prompt_template)
 
     with st.spinner("Searching..."):
-        # Hybrid logic: keyword first, then semantic if no match
         docs = keyword_search(user_query, TOP_K)
         if not docs:
             docs = semantic_search(user_query, TOP_K)
@@ -113,4 +146,3 @@ Answer:""" if user_lang.startswith('en') else """你是濒死体验专家，根�
     st.write(answer)
     with st.expander("Retrieved context"):
         st.code(context)
-
