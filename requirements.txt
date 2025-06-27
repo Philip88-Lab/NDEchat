@@ -10,3 +10,5 @@ google-auth
 numpy
 langdetect
 whoosh
+requests
+torch
