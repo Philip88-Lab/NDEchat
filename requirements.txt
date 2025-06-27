@@ -9,3 +9,4 @@ huggingface-hub
 google-auth
 numpy
 langdetect
+whoosh
