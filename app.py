@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 import zipfile
-import requests
+import gdown
 import faiss
 import pickle
 import torch
@@ -16,32 +16,31 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.documents import Document
 from langdetect import detect
 
-# --- Google Drive 公共直链，替换为你的zip文件ID ---
-WHOOSH_ZIP_URL = "https://drive.google.com/uc?export=download&id=163lLNm20vBzoFdOWq4VOdD3d0FFampaL"
+# --- Google Drive 文件ID ---
+WHOOSH_DRIVE_FILE_ID = "163lLNm20vBzoFdOWq4VOdD3d0FFampaL"
 
 # --- 下载并解压 whoosh_indexdir.zip ---
-def download_and_extract_zip(url, target_dir="indexdir", zip_name="whoosh_indexdir.zip"):
-    if not os.path.exists(target_dir):
-        st.info(f"Downloading Whoosh index zip from cloud storage...")
-        r = requests.get(url)
-        with open(zip_name, "wb") as f:
-            f.write(r.content)
+def download_and_extract_zip(drive_file_id, zip_name="whoosh_indexdir.zip", extract_dir="indexdir"):
+    if not os.path.exists(extract_dir):
+        st.info(f"Downloading Whoosh index zip from Google Drive...")
+        url = f"https://drive.google.com/uc?id={drive_file_id}"
+        gdown.download(url, zip_name, quiet=False)
         st.info(f"Extracting {zip_name} ...")
         with zipfile.ZipFile(zip_name, 'r') as zip_ref:
             zip_ref.extractall(".")
         st.success("Whoosh index ready.")
 
-# --- 侧栏配置 ---
+# --- Streamlit 侧栏 ---
 st.sidebar.title("Settings")
 GEMINI_API_KEY = st.sidebar.text_input("Gemini API Key", type="password")
 TOP_K = st.sidebar.number_input("Number of results (K)", 1, 10, 5, 1)
 
 st.title("🔎 NDE Retrieval Chatbot (Hybrid Search with Cloud Whoosh Index)")
 
-# 下载并解压索引
-download_and_extract_zip(WHOOSH_ZIP_URL)
+# 执行下载和解压
+download_and_extract_zip(WHOOSH_DRIVE_FILE_ID)
 
-# 加载whoosh索引
+# 加载Whoosh索引
 @st.cache_resource
 def load_whoosh_index():
     return open_dir("indexdir")
@@ -49,7 +48,7 @@ def load_whoosh_index():
 whoosh_ix = load_whoosh_index()
 qp = QueryParser("content", whoosh_ix.schema)
 
-# 加载faiss索引和映射（本地需上传）
+# 加载FAISS索引及文档映射（确保这两个文件已上传到项目）
 @st.cache_resource
 def load_faiss_index():
     index = faiss.read_index("nde_faiss.index")
